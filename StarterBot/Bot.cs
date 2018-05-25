@@ -49,9 +49,7 @@ namespace StarterBot
 
             }
 
-            return BuildTower();
-
-            return string.Empty;
+            return DefendTower();
         }
 
         private string BuildEnergy()
@@ -61,13 +59,13 @@ namespace StarterBot
                 return string.Empty;
             }
 
-            var freeCells = gameState.GameMap.Select(c => c.First()).Where(c => c.Buildings.Count == 0).ToList();
+            var freeCells = gameState.GameMap.Select(row => row.First()).Where(cell => cell.Buildings.Count == 0).ToList();
 
             if (freeCells.Count > 0)
             {
                 var space = freeCells[random.Next(freeCells.Count)];
 
-                return $"{space.X},{space.Y},2";
+                return $"{space.X},{space.Y},{(int)BuildingType.Energy}";
             }
             else
             {
@@ -82,13 +80,13 @@ namespace StarterBot
                 return string.Empty;
             }
 
-            var freeCells = gameState.GameMap.Select(c => c[1]).Where(c => c.Buildings.Count == 0).ToList();
+            var freeCells = gameState.GameMap.Select(row => row[1]).Where(cell => cell.Buildings.Count == 0).ToList();
 
             if (freeCells.Count > 0)
             {
                 var space = freeCells[random.Next(freeCells.Count)];
 
-                return $"{space.X},{space.Y},1";
+                return $"{space.X},{space.Y},{(int)BuildingType.Attack}";
             }
             else
             {
@@ -96,9 +94,57 @@ namespace StarterBot
             }
         }
 
+        private string DefendTower()
+        {
+            if (player.Energy < wallPrefab.Price)
+            {
+                return string.Empty;
+            }
+
+            var freeRows = gameState.GameMap.Where(row => row[1].Buildings.Count == 1 && row[3].Buildings.Count == 0).ToList();
+
+            if (freeRows.Count == 0)
+            {
+                if (gameState.GameMap.Where(row => row[1].Buildings.Count == 1).Count() < mapHeight)
+                {
+                    return BuildTower();
+                }
+                else
+                {
+                    return BuildDoubleTower();
+                }
+            }
+
+            var space = freeRows[random.Next(freeRows.Count)][3];
+
+            return $"{space.X},{space.Y},{(int)BuildingType.Defense}";
+        }
+
+        private string BuildDoubleTower()
+        {
+            if (player.Energy < towerPrefab.Price)
+            {
+                return string.Empty;
+            }
+
+            var freeRows = gameState.GameMap.Where(row => row[1].Buildings.Count == 1 && row[2].Buildings.Count == 0).ToList();
+
+            if (freeRows.Count == 0)
+            {
+                return BuildEnergy();
+            }
+
+            var space = freeRows[random.Next(freeRows.Count)][2];
+
+            return $"{space.X},{space.Y},{(int)BuildingType.Attack}";
+        }
+
+
         private IEnumerable<CellStateContainer> GetBuildings(PlayerType player, BuildingType type)
         {
-            return gameState.GameMap.SelectMany(c => c).Where(c => c.CellOwner == player && c.Buildings.Any(b => b.BuildingType == type));
+            return gameState.GameMap.SelectMany(row => row)
+                                    .Where(cell => cell.CellOwner == player &&
+                                                   cell.Buildings.Any(building => building.BuildingType == type));
         }
     }
 }
