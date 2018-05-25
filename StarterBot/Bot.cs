@@ -29,27 +29,76 @@ namespace StarterBot
             this.wallPrefab = gameState.GameDetails.BuildingsStats[BuildingType.Defense];
             this.energyPrefab = gameState.GameDetails.BuildingsStats[BuildingType.Energy];
 
-            this.random = new Random((int) DateTime.Now.Ticks);
+            this.random = new Random((int)DateTime.Now.Ticks);
 
             player = gameState.Players.Single(x => x.PlayerType == PlayerType.A);
         }
 
         public string Run()
-        {            
-            var earnRate = gameState.GameDetails.RoundIncomeEnergy;
-            
+        {
+            var earnRate = gameState.GameDetails.RoundIncomeEnergy + GetBuildings(PlayerType.A, BuildingType.Energy).Count() * energyPrefab.EnergyGeneratedPerTurn;
+
+            if (earnRate < 14)
+            {
+                return BuildEnergy();
+            }
+
+            if (!GetBuildings(PlayerType.A, BuildingType.Attack).Any())
+            {
+                return BuildTower();
+
+            }
+
+            return BuildTower();
 
             return string.Empty;
         }
 
-        private string BuildTower()
+        private string BuildEnergy()
         {
-            throw new NotImplementedException();
+            if (player.Energy < energyPrefab.Price)
+            {
+                return string.Empty;
+            }
+
+            var freeCells = gameState.GameMap.Select(c => c.First()).Where(c => c.Buildings.Count == 0).ToList();
+
+            if (freeCells.Count > 0)
+            {
+                var space = freeCells[random.Next(freeCells.Count)];
+
+                return $"{space.X},{space.Y},2";
+            }
+            else
+            {
+                return string.Empty;
+            }
         }
 
-        private void GetBuildings(PlayerType player, BuildingType type)
+        private string BuildTower()
         {
-            gameState.GameMap.Select(cell => cell.pl
+            if (player.Energy < towerPrefab.Price)
+            {
+                return string.Empty;
+            }
+
+            var freeCells = gameState.GameMap.Select(c => c[1]).Where(c => c.Buildings.Count == 0).ToList();
+
+            if (freeCells.Count > 0)
+            {
+                var space = freeCells[random.Next(freeCells.Count)];
+
+                return $"{space.X},{space.Y},1";
+            }
+            else
+            {
+                return string.Empty;
+            }
+        }
+
+        private IEnumerable<CellStateContainer> GetBuildings(PlayerType player, BuildingType type)
+        {
+            return gameState.GameMap.SelectMany(c => c).Where(c => c.CellOwner == player && c.Buildings.Any(b => b.BuildingType == type));
         }
     }
 }

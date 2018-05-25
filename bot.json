@@ -1,7 +1,7 @@
 {
 	"author": "Andre Odendaal",
 	"email": "v-anoden@microsoft.com",
-	"nickName": "Fengol",
+	"nickName": "Andre",
 	"botLocation": "/StarterBot/bin/Debug/netcoreapp2.0",
 	"botFileName": "StarterBot.dll",
 	"botLanguage": "c#core"

@@ -1,0 +1,1 @@
+For more information about the Entelect Challenge visit their [https://challenge.entelect.co.za/](website).
