@@ -1,144 +1,120 @@
-﻿using System;
+﻿using StarterBot.Entities;
+using StarterBot.Enums;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using StarterBot.Entities;
-using StarterBot.Enums;
 
 namespace StarterBot
 {
+
+    public class Priority
+    {
+        public BuildingType Type { get; set; }
+        public float Value { get; set; }
+    }
+
     public class Bot
     {
         private readonly GameState gameState;
 
-        private readonly BuildingStats towerPrefab;
-        private readonly BuildingStats wallPrefab;
+        private readonly BuildingStats attackPrefab;
+        private readonly BuildingStats defensePrefab;
         private readonly BuildingStats energyPrefab;
 
         private readonly int mapWidth;
         private readonly int mapHeight;
         private readonly Player player;
+        private readonly Player enemy;
         private readonly Random random;
 
-        public Bot(GameState gameState)
+        private readonly List<Command> previousCommands;
+
+        public Bot(GameState gameState, List<Command> history)
         {
             this.gameState = gameState;
             this.mapHeight = gameState.GameDetails.MapHeight;
             this.mapWidth = gameState.GameDetails.MapWidth;
 
-            this.towerPrefab = gameState.GameDetails.BuildingsStats[BuildingType.Attack];
-            this.wallPrefab = gameState.GameDetails.BuildingsStats[BuildingType.Defense];
+            this.attackPrefab = gameState.GameDetails.BuildingsStats[BuildingType.Attack];
+            this.defensePrefab = gameState.GameDetails.BuildingsStats[BuildingType.Defense];
             this.energyPrefab = gameState.GameDetails.BuildingsStats[BuildingType.Energy];
+
+            this.previousCommands = history;
 
             this.random = new Random((int)DateTime.Now.Ticks);
 
             player = gameState.Players.Single(x => x.PlayerType == PlayerType.A);
+            enemy = gameState.Players.Single(x => x.PlayerType == PlayerType.B);
         }
 
-        public string Run()
+        public Command Run()
         {
             var earnRate = gameState.GameDetails.RoundIncomeEnergy + GetBuildings(PlayerType.A, BuildingType.Energy).Count() * energyPrefab.EnergyGeneratedPerTurn;
 
-            if (earnRate < 14)
+            if (earnRate < 17)
             {
-                return BuildEnergy();
-            }
-
-            if (!GetBuildings(PlayerType.A, BuildingType.Attack).Any())
-            {
-                return BuildTower();
-
-            }
-
-            return DefendTower();
-        }
-
-        private string BuildEnergy()
-        {
-            if (player.Energy < energyPrefab.Price)
-            {
-                return string.Empty;
-            }
-
-            var freeCells = gameState.GameMap.Select(row => row.First()).Where(cell => cell.Buildings.Count == 0).ToList();
-
-            if (freeCells.Count > 0)
-            {
-                var space = freeCells[random.Next(freeCells.Count)];
-
-                return $"{space.X},{space.Y},{(int)BuildingType.Energy}";
-            }
-            else
-            {
-                return string.Empty;
-            }
-        }
-
-        private string BuildTower()
-        {
-            if (player.Energy < towerPrefab.Price)
-            {
-                return string.Empty;
-            }
-
-            var freeCells = gameState.GameMap.Select(row => row[1]).Where(cell => cell.Buildings.Count == 0).ToList();
-
-            if (freeCells.Count > 0)
-            {
-                var space = freeCells[random.Next(freeCells.Count)];
-
-                return $"{space.X},{space.Y},{(int)BuildingType.Attack}";
-            }
-            else
-            {
-                return string.Empty;
-            }
-        }
-
-        private string DefendTower()
-        {
-            if (player.Energy < wallPrefab.Price)
-            {
-                return string.Empty;
-            }
-
-            var freeRows = gameState.GameMap.Where(row => row[1].Buildings.Count == 1 && row[3].Buildings.Count == 0).ToList();
-
-            if (freeRows.Count == 0)
-            {
-                if (gameState.GameMap.Where(row => row[1].Buildings.Count == 1).Count() < mapHeight)
+                if (player.Energy >= energyPrefab.Price)
                 {
-                    return BuildTower();
-                }
-                else
-                {
-                    return BuildDoubleTower();
+                    return BuildEnergy();
                 }
             }
 
-            var space = freeRows[random.Next(freeRows.Count)][3];
+            if (player.Energy >= attackPrefab.Price)
+            {
+                var suggested = AttackLeastDefendedRow();
 
-            return $"{space.X},{space.Y},{(int)BuildingType.Defense}";
+                if (suggested.Type == BuildingType.Attack)
+                {
+                    var lastAction = previousCommands.Where(command => command.Type != null).OrderByDescending(command => command.Round).FirstOrDefault();
+
+                    if (lastAction != null && suggested.X == lastAction.X && suggested.Y == lastAction.Y && lastAction.Type == BuildingType.Attack)
+                    {
+                        suggested.Type = BuildingType.Defense;
+                    }
+
+                    return suggested;
+                }
+            }
+
+            return new Command();
         }
 
-        private string BuildDoubleTower()
+        private Command BuildEnergy()
         {
-            if (player.Energy < towerPrefab.Price)
-            {
-                return string.Empty;
-            }
+            var leastDangerous = gameState.GameMap.Where(row => row.First().Buildings.Count == 0)
+                                                  .GroupBy(row => row.Count(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Attack)))
+                                                  .First();
 
-            var freeRows = gameState.GameMap.Where(row => row[1].Buildings.Count == 1 && row[2].Buildings.Count == 0).ToList();
+            var selectedRow = leastDangerous.ToList()[random.Next(leastDangerous.Count())];
 
-            if (freeRows.Count == 0)
-            {
-                return BuildEnergy();
-            }
+            return new Command { X = 0, Y = selectedRow[0].Y, Type = BuildingType.Energy };
+        }
+        
+        public Command AttackLeastDefendedRow()
+        {
+            var selectedRow = gameState.GameMap.Where(row => row.Count(cell => cell.CellOwner == PlayerType.A && cell.Buildings.Count > 0) < mapWidth / 2)
+                                               .OrderByDescending(row => row.Count(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Energy)))
+                                               .ThenByDescending(row => row.Where(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(buildling => buildling.BuildingType == BuildingType.Defense))
+                                                                           .Sum(cell => cell.Buildings.Sum(building => building.Health * ((building.ConstructionTimeLeft > 0) ? 0 : 1)))
+                                                       )
+                                               .First();
 
-            var space = freeRows[random.Next(freeRows.Count)][2];
-
-            return $"{space.X},{space.Y},{(int)BuildingType.Attack}";
+            return BuildAttack(selectedRow);
         }
 
+        private Command BuildAttack(CellStateContainer[] selectedRow)
+        {
+            var freeCell = selectedRow.Where(cell => cell.CellOwner == PlayerType.A && cell.Buildings.Count == 0).OrderByDescending(cell => cell.X).FirstOrDefault();
+
+            if (freeCell != null)
+            {
+                return new Command { X = freeCell.X, Y = freeCell.Y, Type = BuildingType.Attack };
+            }
+            else
+            {
+                return new Command();
+            }
+        }
 
         private IEnumerable<CellStateContainer> GetBuildings(PlayerType player, BuildingType type)
         {
