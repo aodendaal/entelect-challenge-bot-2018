@@ -23,6 +23,7 @@ namespace StarterBot
 
         private readonly int mapWidth;
         private readonly int mapHeight;
+        private readonly int frontLine;
         private readonly Player player;
         private readonly Player enemy;
         private readonly Random random;
@@ -32,16 +33,17 @@ namespace StarterBot
         public Bot(GameState gameState, List<Command> history)
         {
             this.gameState = gameState;
-            this.mapHeight = gameState.GameDetails.MapHeight;
-            this.mapWidth = gameState.GameDetails.MapWidth;
+            mapHeight = gameState.GameDetails.MapHeight;
+            mapWidth = gameState.GameDetails.MapWidth;
+            frontLine = mapWidth / 2 - 1;
 
-            this.attackPrefab = gameState.GameDetails.BuildingsStats[BuildingType.Attack];
-            this.defensePrefab = gameState.GameDetails.BuildingsStats[BuildingType.Defense];
-            this.energyPrefab = gameState.GameDetails.BuildingsStats[BuildingType.Energy];
+            attackPrefab = gameState.GameDetails.BuildingsStats[BuildingType.Attack];
+            defensePrefab = gameState.GameDetails.BuildingsStats[BuildingType.Defense];
+            energyPrefab = gameState.GameDetails.BuildingsStats[BuildingType.Energy];
 
-            this.previousCommands = history;
+            previousCommands = history;
 
-            this.random = new Random((int)DateTime.Now.Ticks);
+            random = new Random((int)DateTime.Now.Ticks);
 
             player = gameState.Players.Single(x => x.PlayerType == PlayerType.A);
             enemy = gameState.Players.Single(x => x.PlayerType == PlayerType.B);
@@ -83,6 +85,7 @@ namespace StarterBot
         {
             var leastDangerous = gameState.GameMap.Where(row => row.First().Buildings.Count == 0)
                                                   .GroupBy(row => row.Count(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Attack)))
+                                                  .OrderBy(group => group.Key)
                                                   .First();
 
             var selectedRow = leastDangerous.ToList()[random.Next(leastDangerous.Count())];
@@ -91,13 +94,15 @@ namespace StarterBot
         }
         
         public Command AttackLeastDefendedRow()
-        {
+        {            
             var selectedRow = gameState.GameMap.Where(row => row.Count(cell => cell.CellOwner == PlayerType.A && cell.Buildings.Count > 0) < mapWidth / 2)
+                                               //.OrderBy(row => row.Count(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Attack)))
                                                .OrderByDescending(row => row.Count(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Energy)))
-                                               .ThenByDescending(row => row.Where(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(buildling => buildling.BuildingType == BuildingType.Defense))
+                                               .ThenBy(row => row.Where(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(buildling => buildling.BuildingType == BuildingType.Defense))
                                                                            .Sum(cell => cell.Buildings.Sum(building => building.Health * ((building.ConstructionTimeLeft > 0) ? 0 : 1)))
-                                                       )
-                                               .First();
+                                               )
+                                               .ThenByDescending(row => row.Count(cell => cell.CellOwner == PlayerType.A && cell.Buildings.Any(building => building.BuildingType == BuildingType.Energy)))
+                                               .FirstOrDefault();
 
             return BuildAttack(selectedRow);
         }
