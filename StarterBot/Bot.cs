@@ -61,24 +61,68 @@ namespace StarterBot
                 }
             }
 
+            float attackEnergyAndTowers = gameState.GameMap.Count(row => row.Count(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Energy)) > 0 &&
+                                                             row.Count(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Defense)) == 0);
+            attackEnergyAndTowers *= (gameState.GameDetails.Round < gameState.GameDetails.MaxRounds / 4) ? 0.1f : 1f;
+
+
+            float attackOnlyEnergy = gameState.GameMap.Count(row => row.Count(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Energy)) > 0 &&
+                                                              row.Count(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Attack)) == 0 &&
+                                                              row.Count(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Defense)) == 0);
+            attackOnlyEnergy *= (gameState.GameDetails.Round < gameState.GameDetails.MaxRounds / 4) ? 0.2f : 2f;
+
+
+            float goDefensive = gameState.GameMap.Count(row => row.Count(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Attack)) >= 2 &&
+                                                           row.Count(cell => cell.CellOwner == PlayerType.A && cell.Buildings.Any(building => building.BuildingType == BuildingType.Defense)) == 0);
+
+            goDefensive *= (gameState.GameDetails.Round < gameState.GameDetails.MaxRounds / 4) ? 1f : 0.5f;
+
+            if (goDefensive >= attackEnergyAndTowers &&
+                goDefensive >= attackOnlyEnergy && 
+                player.Energy >= defensePrefab.Price)
+            {
+                return DefendAgainstAttack();
+            }
+
             if (player.Energy >= attackPrefab.Price)
             {
-                var suggested = AttackLeastDefendedRow();
-
-                if (suggested.Type == BuildingType.Attack)
-                {
-                    var lastAction = previousCommands.Where(command => command.Type != null).OrderByDescending(command => command.Round).FirstOrDefault();
-
-                    if (lastAction != null && suggested.X == lastAction.X && suggested.Y == lastAction.Y && lastAction.Type == BuildingType.Attack)
-                    {
-                        suggested.Type = BuildingType.Defense;
-                    }
-
-                    return suggested;
-                }
+                return AttackLeastDefendedRow();
             }
 
             return new Command();
+        }
+
+        private Command DefendAgainstAttack()
+        {
+            var selectedRow = gameState.GameMap.Where(row => row.Any(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Attack)))
+                                               .OrderBy(row => row.Count(cell => cell.CellOwner == PlayerType.A && cell.Buildings.Any(building => building.BuildingType == BuildingType.Defense)))
+                                               .ThenByDescending(row => row.Count(cell => cell.CellOwner == PlayerType.A && cell.Buildings.Any(building => building.BuildingType == BuildingType.Energy)))
+                                               .FirstOrDefault();
+
+            if (selectedRow != null)
+            {
+                return BuildDefense(selectedRow);
+            }
+
+            selectedRow = gameState.GameMap.OrderBy(row => row.Count(cell => cell.CellOwner == PlayerType.A && cell.Buildings.Any(building => building.BuildingType == BuildingType.Defense)))
+                                           .ThenByDescending(row => row.Count(cell => cell.CellOwner == PlayerType.A && cell.Buildings.Any(building => building.BuildingType == BuildingType.Energy)))
+                                           .First();
+
+            return BuildDefense(selectedRow);
+        }
+
+        private static Command BuildDefense(CellStateContainer[] selectedRow)
+        {
+            var freeCell = selectedRow.Where(cell => cell.CellOwner == PlayerType.A && cell.Buildings.Count == 0).OrderByDescending(cell => cell.X).FirstOrDefault();
+
+            if (freeCell != null)
+            {
+                return new Command { X = freeCell.X, Y = freeCell.Y, Type = BuildingType.Defense };
+            }
+            else
+            {
+                return new Command();
+            }
         }
 
         private Command BuildEnergy()
@@ -92,9 +136,9 @@ namespace StarterBot
 
             return new Command { X = 0, Y = selectedRow[0].Y, Type = BuildingType.Energy };
         }
-        
+
         public Command AttackLeastDefendedRow()
-        {            
+        {
             var selectedRow = gameState.GameMap.Where(row => row.Count(cell => cell.CellOwner == PlayerType.A && cell.Buildings.Count > 0) < mapWidth / 2)
                                                //.OrderBy(row => row.Count(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Attack)))
                                                .OrderByDescending(row => row.Count(cell => cell.CellOwner == PlayerType.B && cell.Buildings.Any(building => building.BuildingType == BuildingType.Energy)))
